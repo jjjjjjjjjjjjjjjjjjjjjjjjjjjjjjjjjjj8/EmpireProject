@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Empire Pixel Simulation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Empire Pixel Simulation</h1>
+        <div class="controls">
+            <button id="toggleBtn">Pause Simulation</button>
+            <button id="resetBtn">Reset Map</button>
+            <button id="genMapBtn">Generate New Map</button>
+            <button id="speedDownBtn">Slow Down</button>
+            <button id="speedUpBtn">Speed Up</button>
+            <button id="fullscreenBtn">Fullscreen</button>
+            <span id="tickCounter">Tick: 0</span>
+            <span id="speedDisplay">Speed: 1x</span>
+        </div>
+        <div id="gameOverMsg" class="game-over-msg" style="display: none;"></div>
+        <div class="stats-container">
+            <div id="statsPanel" class="stats-panel"></div>
+        </div>
+        <canvas id="canvas" width="1600" height="1000"></canvas>
+    </div>
+    <script src="simulation.js"></script>
+</body>
+
+</html>
