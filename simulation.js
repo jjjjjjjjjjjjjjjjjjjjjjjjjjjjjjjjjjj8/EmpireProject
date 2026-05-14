@@ -401,17 +401,16 @@ function performAttack(attacker, targetX, targetY) {
         // If attacker is 5x or more the size of defender, chance of surrender scales with size difference
         if (attackerSize >= defenderSize * 5) {
             const sizeRatio = attackerSize / defenderSize;
-            // Base chance of 0.001% at 5x, increases linearly with ratio
-            const baseChance = 0.00001; // 0.001% at exactly 5x
+            // Base chance of 0.1% at 5x, increases linearly with ratio
+            const baseChance = 0.001; // 0.1% at exactly 5x
             const surrenderChance = baseChance * (sizeRatio / 5);
 
             if (Math.random() < surrenderChance) {
                 // Defender surrenders - delete the entire empire and leave neutral territory
-                const defenderPixels = Array.from(gameState.empires[defender].pixels);
-                defenderPixels.forEach(pixel => {
+                for (const pixel of gameState.empires[defender].pixels) {
                     const [x, y] = pixel.split(',').map(Number);
                     gameState.grid[y][x] = null; // Convert to neutral
-                });
+                }
                 delete gameState.empires[defender];
                 return; // Attack ends with surrender
             }
@@ -469,6 +468,29 @@ function splitEmpire(color) {
     const empire = gameState.empires[color];
     if (!empire || empire.pixels.size < 10) return;
 
+    // 25% chance to spawn a completely new empire instead of splitting
+    if (Math.random() < 0.25) {
+        const randomPixel = getRandomSetElement(empire.pixels);
+        const [sx, sy] = randomPixel.split(',').map(Number);
+        
+        let newColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+        while (gameState.empires[newColor]) {
+            newColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+        }
+        
+        const availableNames = EMPIRE_NAMES.filter(name =>
+            !Object.values(gameState.empires).some(emp => emp.name === name)
+        );
+        const newName = availableNames.length > 0
+            ? availableNames[Math.floor(Math.random() * availableNames.length)]
+            : `Empire ${Object.keys(gameState.empires).length + 1}`;
+        
+        const spawnSize = Math.floor(Math.random() * 301) + 50;
+        spawnEmpire(sx, sy, newColor, spawnSize);
+        return;
+    }
+
+    // Normal split: carve off a contiguous faction and spawn it compactly nearby
     const maxSplitSize = Math.min(200, Math.max(10, Math.floor(empire.pixels.size * 0.08)));
     const startPixel = getRandomSetElement(empire.pixels);
     if (!startPixel) return;
@@ -499,22 +521,34 @@ function splitEmpire(color) {
 
     if (breakPixels.size < 10 || breakPixels.size >= empire.pixels.size) return;
 
+    const breakawaySize = breakPixels.size;
+
+    // Remove breakaway pixels from original empire and clear from grid
+    for (const pixel of breakPixels) {
+        empire.pixels.delete(pixel);
+        const [x, y] = pixel.split(',').map(Number);
+        gameState.grid[y][x] = null;
+    }
+
+    // Generate new color and name for breakaway faction
     const newColor = getSimilarColor(color);
-    const newEmpire = {
+    const availableNames = EMPIRE_NAMES.filter(name =>
+        !Object.values(gameState.empires).some(emp => emp.name === name)
+    );
+    const newName = availableNames.length > 0
+        ? availableNames[Math.floor(Math.random() * availableNames.length)]
+        : `${empire.name} (Breakaway)`;
+
+    // Pre-create the empire with custom name so spawnEmpire doesn't override it
+    gameState.empires[newColor] = {
         color: newColor,
-        name: empire.name,
+        name: newName,
         pixels: new Set(),
         lastAttackTick: -1
     };
 
-    for (const pixel of breakPixels) {
-        empire.pixels.delete(pixel);
-        newEmpire.pixels.add(pixel);
-        const [x, y] = pixel.split(',').map(Number);
-        gameState.grid[y][x] = newColor;
-    }
-
-    gameState.empires[newColor] = newEmpire;
+    // Spawn compact breakaway empire at same location
+    spawnEmpire(startX, startY, newColor, breakawaySize);
 }
 
 function simulateTick() {
