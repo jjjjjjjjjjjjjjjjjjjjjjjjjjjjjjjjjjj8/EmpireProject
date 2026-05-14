@@ -357,14 +357,25 @@ function rollDice() {
     return Math.floor(Math.random() * DICE_SIDES) + 1;
 }
 
+const ADJACENT_DIRECTIONS = [
+    [0, -1], [0, 1], [-1, 0], [1, 0],
+    [-1, -1], [-1, 1], [1, -1], [1, 1]
+];
+
+function getRandomSetElement(set) {
+    const targetIndex = Math.floor(Math.random() * set.size);
+    let index = 0;
+    for (const item of set) {
+        if (index === targetIndex) return item;
+        index++;
+    }
+    return null;
+}
+
 function getAdjacentPixels(x, y) {
     const adjacent = [];
-    const directions = [
-        [0, -1], [0, 1], [-1, 0], [1, 0],
-        [-1, -1], [-1, 1], [1, -1], [1, 1]
-    ];
 
-    for (const [dx, dy] of directions) {
+    for (const [dx, dy] of ADJACENT_DIRECTIONS) {
         const nx = x + dx;
         const ny = y + dy;
         if (nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT) {
@@ -445,7 +456,7 @@ function randomEmpireSpawn() {
 
     // Pick random pixel from source empire
     const pixelsArray = Array.from(sourceEmpire.pixels);
-    const randomPixel = pixelsArray[Math.floor(Math.random() * pixelsArray.length)];
+    const randomPixel = getRandomSetElement(sourceEmpire.pixels);
     const [sx, sy] = randomPixel.split(',').map(Number);
 
     // Generate a random color (any color including gray)
@@ -453,6 +464,47 @@ function randomEmpireSpawn() {
 
     // Spawn the new empire as a tight group
     spawnEmpire(sx, sy, newColor, SPAWN_SIZE);
+}
+
+function splitEmpire(color) {
+    const empire = gameState.empires[color];
+    if (!empire || empire.pixels.size < 10) return;
+
+    const numParts = Math.floor(Math.random() * 4) + 2; // 2-5 parts
+    const groups = Array.from({ length: numParts }, () => []);
+    let index = 0;
+
+    for (const pixel of empire.pixels) {
+        groups[index % numParts].push(pixel);
+        index++;
+    }
+
+    // Keep one faction with the original color to avoid recoloring the entire empire.
+    const originalGroup = groups.shift();
+    const originalPixels = new Set(originalGroup);
+    empire.pixels.clear();
+    for (const pixel of originalGroup) {
+        empire.pixels.add(pixel);
+    }
+
+    for (const group of groups) {
+        if (group.length === 0) continue;
+        const newColor = getSimilarColor(color);
+        const newEmpire = {
+            color: newColor,
+            name: empire.name,
+            pixels: new Set(),
+            lastAttackTick: -1
+        };
+
+        for (const pixel of group) {
+            const [x, y] = pixel.split(',').map(Number);
+            gameState.grid[y][x] = newColor;
+            newEmpire.pixels.add(pixel);
+        }
+
+        gameState.empires[newColor] = newEmpire;
+    }
 }
 
 function simulateTick() {
@@ -466,8 +518,7 @@ function simulateTick() {
         if (empire.pixels.size === 0) continue;
 
         // Pick a random pixel to attack from
-        const pixelsArray = Array.from(empire.pixels);
-        const randomPixel = pixelsArray[Math.floor(Math.random() * pixelsArray.length)];
+        const randomPixel = getRandomSetElement(empire.pixels);
         const [px, py] = randomPixel.split(',').map(Number);
 
         // Get adjacent pixels
@@ -498,34 +549,7 @@ function simulateTick() {
     // Civil war check - 0.001% chance per empire per tick
     for (const color of Object.keys(gameState.empires)) {
         if (Math.random() < 0.00001) { // 0.001%
-            const empire = gameState.empires[color];
-            const pixels = Array.from(empire.pixels);
-
-            if (pixels.length < 10) continue; // Too small to split
-
-            const numParts = Math.floor(Math.random() * 4) + 2; // 2-5 parts
-            const groups = Array.from({ length: numParts }, () => []);
-
-            // Distribute pixels evenly among groups
-            pixels.forEach((pixel, index) => {
-                groups[index % numParts].push(pixel);
-            });
-
-            // Remove old empire
-            delete gameState.empires[color];
-
-            // Create new empires with similar colors and preserve the original name
-            groups.forEach(group => {
-                if (group.length > 0) {
-                    const newColor = getSimilarColor(color);
-                    gameState.empires[newColor] = {
-                        color: newColor,
-                        name: empire.name,
-                        pixels: new Set(group),
-                        lastAttackTick: -1
-                    };
-                }
-            });
+            splitEmpire(color);
         }
     }
 
