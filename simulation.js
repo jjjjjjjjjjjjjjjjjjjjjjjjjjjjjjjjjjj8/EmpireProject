@@ -455,7 +455,6 @@ function randomEmpireSpawn() {
     if (sourceEmpire.pixels.size === 0) return;
 
     // Pick random pixel from source empire
-    const pixelsArray = Array.from(sourceEmpire.pixels);
     const randomPixel = getRandomSetElement(sourceEmpire.pixels);
     const [sx, sy] = randomPixel.split(',').map(Number);
 
@@ -470,41 +469,52 @@ function splitEmpire(color) {
     const empire = gameState.empires[color];
     if (!empire || empire.pixels.size < 10) return;
 
-    const numParts = Math.floor(Math.random() * 4) + 2; // 2-5 parts
-    const groups = Array.from({ length: numParts }, () => []);
-    let index = 0;
+    const maxSplitSize = Math.min(200, Math.max(10, Math.floor(empire.pixels.size * 0.08)));
+    const startPixel = getRandomSetElement(empire.pixels);
+    if (!startPixel) return;
 
-    for (const pixel of empire.pixels) {
-        groups[index % numParts].push(pixel);
-        index++;
-    }
+    const [startX, startY] = startPixel.split(',').map(Number);
+    const breakPixels = new Set([startPixel]);
+    const visited = new Set([startPixel]);
+    const queue = [[startX, startY]];
+    let queueIndex = 0;
 
-    // Keep one faction with the original color to avoid recoloring the entire empire.
-    const originalGroup = groups.shift();
-    const originalPixels = new Set(originalGroup);
-    empire.pixels.clear();
-    for (const pixel of originalGroup) {
-        empire.pixels.add(pixel);
-    }
+    while (queueIndex < queue.length && breakPixels.size < maxSplitSize) {
+        const [x, y] = queue[queueIndex++];
 
-    for (const group of groups) {
-        if (group.length === 0) continue;
-        const newColor = getSimilarColor(color);
-        const newEmpire = {
-            color: newColor,
-            name: empire.name,
-            pixels: new Set(),
-            lastAttackTick: -1
-        };
+        for (const [dx, dy] of ADJACENT_DIRECTIONS) {
+            const nx = x + dx;
+            const ny = y + dy;
+            const key = `${nx},${ny}`;
 
-        for (const pixel of group) {
-            const [x, y] = pixel.split(',').map(Number);
-            gameState.grid[y][x] = newColor;
-            newEmpire.pixels.add(pixel);
+            if (nx < 0 || nx >= GRID_WIDTH || ny < 0 || ny >= GRID_HEIGHT || visited.has(key)) continue;
+            visited.add(key);
+            if (gameState.grid[ny][nx] !== color) continue;
+
+            queue.push([nx, ny]);
+            breakPixels.add(key);
+            if (breakPixels.size >= maxSplitSize) break;
         }
-
-        gameState.empires[newColor] = newEmpire;
     }
+
+    if (breakPixels.size < 10 || breakPixels.size >= empire.pixels.size) return;
+
+    const newColor = getSimilarColor(color);
+    const newEmpire = {
+        color: newColor,
+        name: empire.name,
+        pixels: new Set(),
+        lastAttackTick: -1
+    };
+
+    for (const pixel of breakPixels) {
+        empire.pixels.delete(pixel);
+        newEmpire.pixels.add(pixel);
+        const [x, y] = pixel.split(',').map(Number);
+        gameState.grid[y][x] = newColor;
+    }
+
+    gameState.empires[newColor] = newEmpire;
 }
 
 function simulateTick() {
